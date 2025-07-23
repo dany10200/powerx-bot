@@ -3,6 +3,6 @@ services:
     name: powerx-bot
     runtime: python
     build:
-      pythonVersion: 3.10
+      pythonVersion: 3.10.13
       buildCommand: pip install -r requirements.txt
     startCommand: python main.py

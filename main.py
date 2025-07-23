@@ -4,7 +4,6 @@ import smtplib
 from aiogram import Bot, Dispatcher, executor, types
 from dotenv import load_dotenv
 from email.message import EmailMessage
-from keep_alive import keep_alive
 from collections import defaultdict
 from datetime import datetime
 
@@ -24,7 +23,6 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
 
-keep_alive()
 
 # تتبع المحادثة
 user_message_count = defaultdict(int)
@@ -137,3 +135,4 @@ async def handle_message(message: types.Message):
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
+

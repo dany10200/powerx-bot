@@ -1,13 +1,11 @@
 import os
 import openai
 import smtplib
-import asyncio
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, executor
 from dotenv import load_dotenv
 from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
-from aiohttp import web
 
 load_dotenv()
 
@@ -16,12 +14,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_FROM")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
 LOCATION = os.getenv("LOCATION")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود في .env"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
-assert WEBHOOK_URL, "❌ WEBHOOK_URL غير معرف"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
@@ -126,27 +122,6 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# ✅ Webhook setup
-async def on_startup(dp):
-    await bot.set_webhook(WEBHOOK_URL)
-    print(f"✅ Webhook set to {WEBHOOK_URL}")
-
-# ✅ Webhook endpoint
-async def handle_webhook(request):
-    body = await request.json()
-    update = types.Update.to_object(body)
-    await dp.process_update(update)
-    return web.Response()
-
-async def main():
-    await on_startup(dp)
-    app = web.Application()
-    app.router.add_post("/webhook", handle_webhook)
-    app.router.add_get("/", lambda request: web.Response(text="PowerX bot is alive ✅"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080)))
-    await site.start()
-
+# ✅ تشغيل البوت بالـ Polling
 if __name__ == "__main__":
-    asyncio.run(main())
+    executor.start_polling(dp, skip_updates=True)

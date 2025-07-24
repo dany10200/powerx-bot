@@ -145,6 +145,7 @@ async def fake_server():
 
 # ✅ Run bot and fake server معًا
 async def main():
+    await bot.delete_webhook(drop_pending_updates=True)  # ⬅️ السطر الجديد هنا
     await asyncio.gather(
         fake_server(),
         dp.start_polling()

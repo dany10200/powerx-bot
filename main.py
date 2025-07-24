@@ -2,7 +2,7 @@ import os
 import openai
 import smtplib
 import asyncio
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, types
 from dotenv import load_dotenv
 from email.message import EmailMessage
 from collections import defaultdict
@@ -16,16 +16,17 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_FROM")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
 LOCATION = os.getenv("LOCATION")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود في .env"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
+assert WEBHOOK_URL, "❌ WEBHOOK_URL غير معرف"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
 
-# تتبع المحادثة
 user_message_count = defaultdict(int)
 user_conversations = defaultdict(list)
 MAX_MESSAGES = 20
@@ -51,7 +52,6 @@ SYSTEM_PROMPT = f"""
 - باقة تيربو – 1890 ريال: حماية نص كبوت + تظليل + نانو سيراميك + نانو داخلي.
 - الباقة الماسية – 2500 ريال: حماية كاملة + تظليل + نانو داخلي + نانو جنوط.
 - باقة VIP – 7000 ريال: تغليف كامل + تظليل + نانو داخلي.
-
 الأسعار تختلف حسب حجم السيارة. الأرضيات تُسعر من المشرف.
 """
 
@@ -70,11 +70,9 @@ def send_email(user_id, messages):
     except Exception as e:
         print(f"❌ فشل إرسال الإيميل: {e}")
 
-
 @dp.message_handler(commands=["start", "help"])
 async def start(message: types.Message):
     await message.reply("هلا فيك معاك فريق PowerX 👋 اسألنا عن خدماتنا أو الأسعار، ونساعدك على طول!")
-
 
 @dp.message_handler()
 async def handle_message(message: types.Message):
@@ -116,10 +114,6 @@ async def handle_message(message: types.Message):
             reply = "🤖 ما قدرت أفهمك، ممكن تعيد سؤالك؟"
 
         user_conversations[user_id].append(f"🤖 {reply}")
-
-        print(f"[{user_id}] 👤 {message.text}")
-        print(f"[Bot] 🤖 {reply}")
-
         await message.reply(reply)
 
         if user_message_count[user_id] == MAX_MESSAGES:
@@ -132,24 +126,27 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# ✅ Fake HTTP Server لرضا Render
-async def fake_server():
-    async def handle(request):
-        return web.Response(text="PowerX bot is alive ✅")
+# ✅ Webhook setup
+async def on_startup(dp):
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"✅ Webhook set to {WEBHOOK_URL}")
+
+# ✅ Webhook endpoint
+async def handle_webhook(request):
+    body = await request.json()
+    update = types.Update.to_object(body)
+    await dp.process_update(update)
+    return web.Response()
+
+async def main():
+    await on_startup(dp)
     app = web.Application()
-    app.router.add_get("/", handle)
+    app.router.add_post("/webhook", handle_webhook)
+    app.router.add_get("/", lambda request: web.Response(text="PowerX bot is alive ✅"))
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080)))
     await site.start()
-
-# ✅ Run bot and fake server معًا
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)  # ⬅️ السطر الجديد هنا
-    await asyncio.gather(
-        fake_server(),
-        dp.start_polling()
-    )
 
 if __name__ == "__main__":
     asyncio.run(main())

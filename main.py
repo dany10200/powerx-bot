@@ -1,11 +1,13 @@
 import os
 import openai
 import smtplib
+import asyncio
 from aiogram import Bot, Dispatcher, executor, types
 from dotenv import load_dotenv
 from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
+from aiohttp import web
 
 load_dotenv()
 
@@ -22,7 +24,6 @@ assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل نا
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
-
 
 # تتبع المحادثة
 user_message_count = defaultdict(int)
@@ -79,7 +80,6 @@ async def start(message: types.Message):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
 
-    # حماية من الرسائل الفارغة والطويلة
     if not message.text or message.text.strip() == "":
         await message.reply("📝 أرسل لنا سؤالك أو استفسارك بشكل واضح.")
         return
@@ -132,7 +132,23 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
+# ✅ Fake HTTP Server لرضا Render
+async def fake_server():
+    async def handle(request):
+        return web.Response(text="PowerX bot is alive ✅")
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080)))
+    await site.start()
+
+# ✅ Run bot and fake server معًا
+async def main():
+    await asyncio.gather(
+        fake_server(),
+        dp.start_polling()
+    )
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
-
+    asyncio.run(main())

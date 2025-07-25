@@ -1,14 +1,14 @@
 import os
+import asyncio
 import openai
 import smtplib
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Update
-from aiogram.utils.executor import start_webhook
-from dotenv import load_dotenv
+from flask import Flask, request
 from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
-from aiohttp import web
 
 # تحميل متغيرات البيئة
 load_dotenv()
@@ -18,29 +18,24 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_FROM")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
 LOCATION = os.getenv("LOCATION")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثل: https://powerx-bot.onrender.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# تحقق من المتغيرات
 assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
-assert WEBHOOK_URL, "❌ WEBHOOK_URL ناقص، أضفه في .env"
+assert WEBHOOK_URL, "❌ WEBHOOK_URL ناقص"
 
-# تهيئة البوت
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
 
-# تتبع المستخدمين
 user_message_count = defaultdict(int)
 user_conversations = defaultdict(list)
-MAX_MESSAGES = 25
+MAX_MESSAGES = 20
 
-# رسالة ختامية
 CLOSING_MESSAGE = "\n📞 لمزيد من المعلومات والاستفسارات يُرجى الاتصال أو إرسال واتساب على الرقم 0597218485"
 
-# النظام الأساسي
-SYSTEM_PROMPT = f"""
+SYSTEM_PROMPT = """
 أنت تمثل مركز PowerX في الدمام، وتعمل كمندوب مبيعات ذكي محترف. وظيفتك الرد على العملاء باللهجة السعودية، بأسلوب تسويقي واقعي، ودود، احترافي، ومقنع.
 
 ### 💡 تعليمات الرد:
@@ -101,7 +96,7 @@ SYSTEM_PROMPT = f"""
 - كل المواد **أصلية ومعتمدة** (XPEL، نانو، تظليل أمريكي حراري).
 """
 
-# إرسال المحادثة بالبريد
+# إرسال المحادثة عبر الإيميل
 def send_email(user_id, messages):
     try:
         msg = EmailMessage()
@@ -113,16 +108,16 @@ def send_email(user_id, messages):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             smtp.send_message(msg)
-        print(f"✅ تم إرسال المحادثة إلى الإيميل (ID: {user_id})")
+        print(f"✅ تم إرسال المحادثة إلى الإيميل بنجاح (ID: {user_id})")
     except Exception as e:
-        print(f"❌ فشل الإرسال: {e}")
+        print(f"❌ فشل إرسال الإيميل: {e}")
 
-# أوامر البداية
+# أوامر /start و /help
 @dp.message_handler(commands=["start", "help"])
 async def start(message: types.Message):
     await message.reply("هلا فيك معاك فريق PowerX 👋 اسألنا عن خدماتنا أو الأسعار، ونساعدك على طول!")
 
-# التعامل مع الرسائل
+# الردود العامة
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
@@ -138,7 +133,7 @@ async def handle_message(message: types.Message):
     user_message_count[user_id] += 1
 
     if user_message_count[user_id] > MAX_MESSAGES:
-        await message.reply("🚫 وصلت الحد الأقصى من الرسائل.")
+        await message.reply("🚫 وصلت الحد الأقصى من الرسائل المسموح بها.")
         return
 
     if "موقع" in message.text.lower() or "وين" in message.text.lower():
@@ -176,35 +171,24 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# إعداد Webhook
-WEBHOOK_PATH = "/webhook"
-WEBAPP_HOST = "0.0.0.0"
-WEBAPP_PORT = int(os.getenv("PORT", 10000))
+# إعداد Flask
+app = Flask(__name__)
 
-async def on_startup(app):
-    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
-    print(f"✅ Webhook تم تفعيله على {WEBHOOK_URL + WEBHOOK_PATH}")
+@app.route('/')
+def health_check():
+    return "🤖 PowerX Bot is running!"
 
-async def on_shutdown(app):
-    print("🔻 إيقاف البوت...")
-    await bot.delete_webhook()
+@app.route('/webhook', methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    await dp.process_update(update)
+    return "ok"
 
-# UptimeRobot check endpoint
-async def health_check(request):
-    return web.Response(text="🤖 PowerX Bot (Webhook) is live.")
+# إعداد Webhook عند التشغيل
+async def on_startup():
+    await bot.set_webhook(WEBHOOK_URL + "/webhook")
 
-# التشغيل
 if __name__ == "__main__":
-    app = web.Application()
-    app.router.add_get("/", health_check)
-
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-        web_app=app
-    )
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(on_startup())
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))

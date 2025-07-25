@@ -1,12 +1,15 @@
 import os
 import openai
 import smtplib
+import threading
 from aiogram import Bot, Dispatcher, types, executor
 from dotenv import load_dotenv
 from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
+from flask import Flask
 
+# تحميل متغيرات البيئة
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -19,6 +22,7 @@ assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود في .env"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
 
+# aiogram
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
@@ -51,6 +55,18 @@ SYSTEM_PROMPT = f"""
 الأسعار تختلف حسب حجم السيارة. الأرضيات تُسعر من المشرف.
 """
 
+# ====== FLASK KEEP-ALIVE SERVER FOR RENDER ======
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 PowerX Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# ====== EMAIL FUNCTION ======
 def send_email(user_id, messages):
     try:
         msg = EmailMessage()
@@ -66,6 +82,7 @@ def send_email(user_id, messages):
     except Exception as e:
         print(f"❌ فشل إرسال الإيميل: {e}")
 
+# ====== HANDLERS ======
 @dp.message_handler(commands=["start", "help"])
 async def start(message: types.Message):
     await message.reply("هلا فيك معاك فريق PowerX 👋 اسألنا عن خدماتنا أو الأسعار، ونساعدك على طول!")
@@ -122,6 +139,9 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# ✅ تشغيل البوت بالـ Polling
+# ====== MAIN ENTRY POINT ======
 if __name__ == "__main__":
+    # تشغيل Flask في Thread منفصل
+    threading.Thread(target=run_flask).start()
+    # تشغيل البوت
     executor.start_polling(dp, skip_updates=True)

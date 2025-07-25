@@ -1,7 +1,10 @@
 services:
-  - type: worker
-    name: telegram-bot
+  - type: web
+    name: powerx-bot
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    autoDeploy: false
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    pythonVersion: 3.10.13

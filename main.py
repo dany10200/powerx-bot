@@ -182,11 +182,11 @@ def health_check():
 def webhook():
     try:
         update = types.Update(**request.get_json(force=True))
-        loop = asyncio.get_event_loop()
-        loop.create_task(dp.process_update(update))
+        asyncio.run(dp.process_update(update))
     except Exception as e:
         print(f"[Webhook Error] {e}")
     return "ok"
+
 
 # إعداد Webhook عند التشغيل
 async def on_startup():

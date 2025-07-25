@@ -2,8 +2,10 @@ import os
 import asyncio
 import openai
 import smtplib
+import threading
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
+from aiogram.dispatcher.webhook import SendMessage
 from flask import Flask, request
 from email.message import EmailMessage
 from collections import defaultdict
@@ -94,7 +96,6 @@ SYSTEM_PROMPT = """
 - الأرضيات *لا تدخل في السعر*، ويتم تسعيرها من قبل المشرف.
 - كل المواد *أصلية ومعتمدة* (XPEL، نانو، تظليل أمريكي حراري).
 """
-
 # إرسال المحادثة عبر الإيميل
 def send_email(user_id, messages):
     try:
@@ -174,11 +175,11 @@ async def handle_message(message: types.Message):
 # إعداد Flask
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def health_check():
-    return "🤖 PowerX Bot is running!"
+    return "🤖 PowerX Bot is live!"
 
-@app.route('/webhook', methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         update = types.Update(**request.get_json(force=True))
@@ -187,12 +188,21 @@ def webhook():
         print(f"[Webhook Error] {e}")
     return "ok"
 
-
-# إعداد Webhook عند التشغيل
+# تهيئة Webhook
 async def on_startup():
     await bot.set_webhook(WEBHOOK_URL + "/webhook")
+    print(f"✅ Webhook متصل على: {WEBHOOK_URL}/webhook")
 
+# تشغيل aiogram في Thread منفصل
+def start_dispatcher():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(dp.start_polling())
+    loop.run_forever()
+
+# تشغيل التطبيق
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(on_startup())
+    threading.Thread(target=start_dispatcher).start()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))

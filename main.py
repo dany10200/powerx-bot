@@ -31,7 +31,7 @@ openai.api_key = OPENAI_API_KEY
 
 user_message_count = defaultdict(int)
 user_conversations = defaultdict(list)
-MAX_MESSAGES = 20
+MAX_MESSAGES = 25
 
 CLOSING_MESSAGE = "\n📞 لمزيد من المعلومات والاستفسارات يُرجى الاتصال أو إرسال واتساب على الرقم 0597218485"
 

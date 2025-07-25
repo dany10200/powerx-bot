@@ -9,8 +9,6 @@ from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
 from flask import Flask
-from aiohttp import web
-import asyncio
 
 # تحميل متغيرات البيئة
 load_dotenv()
@@ -20,24 +18,28 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_FROM")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
 LOCATION = os.getenv("LOCATION")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثال: https://your-app.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثال: https://your-app.onrender.com
 
+# التحقق من توفر المتغيرات
 assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
 assert WEBHOOK_URL, "❌ WEBHOOK_URL ناقص، أضفه في .env"
 
-# إعدادات aiogram
+# تهيئة البوت
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
 
+# تتبع المحادثات
 user_message_count = defaultdict(int)
 user_conversations = defaultdict(list)
 MAX_MESSAGES = 20
 
+# الرسالة الختامية
 CLOSING_MESSAGE = "\n📞 لمزيد من المعلومات والاستفسارات يُرجى الاتصال أو إرسال واتساب على الرقم 0597218485"
 
+# النظام الأساسي للتعامل
 SYSTEM_PROMPT = f"""
 أنت موظف خدمة عملاء ذكي في مركز PowerX في السعودية، ترد باللهجة السعودية باحتراف تسويقي وبأسلوب ودود، وتستخدم رموز خفيفة وقت الحاجة (🚗✨👌).
 تجاوب حسب سؤال العميل وتعرض الخدمات والباقات عند الحاجة، بدون تكرار، ولا ترد بنفس الرد مرتين.
@@ -60,7 +62,7 @@ SYSTEM_PROMPT = f"""
 الأسعار تختلف حسب حجم السيارة. الأرضيات تُسعر من المشرف.
 """
 
-# ====== EMAIL FUNCTION ======
+# إرسال المحادثة عبر الإيميل
 def send_email(user_id, messages):
     try:
         msg = EmailMessage()
@@ -76,11 +78,12 @@ def send_email(user_id, messages):
     except Exception as e:
         print(f"❌ فشل إرسال الإيميل: {e}")
 
-# ====== HANDLERS ======
+# الأوامر الأساسية
 @dp.message_handler(commands=["start", "help"])
 async def start(message: types.Message):
     await message.reply("هلا فيك معاك فريق PowerX 👋 اسألنا عن خدماتنا أو الأسعار، ونساعدك على طول!")
 
+# التعامل مع جميع الرسائل
 @dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
@@ -99,14 +102,15 @@ async def handle_message(message: types.Message):
         await message.reply("🚫 وصلت الحد الأقصى من الرسائل المسموح بها.")
         return
 
-    text = message.text.lower()
-    if "موقع" in text or "وين" in text:
+    if "موقع" in message.text.lower() or "وين" in message.text.lower():
         await message.reply(f"📍 موقعنا: {LOCATION}")
         return
 
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages += [{"role": "user", "content": message.text}]
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": message.text}
+        ]
         user_conversations[user_id].append(f"👤 {message.text}")
 
         response = openai.ChatCompletion.create(
@@ -133,7 +137,7 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# ====== WEBHOOK CONFIGURATION ======
+# إعداد Webhook
 WEBHOOK_PATH = "/webhook"
 WEBAPP_HOST = "0.0.0.0"
 WEBAPP_PORT = int(os.getenv("PORT", 10000))
@@ -146,25 +150,16 @@ async def on_shutdown(app):
     print("🔻 إيقاف البوت...")
     await bot.delete_webhook()
 
-# ====== FLASK ROUTE FOR RENDER HEALTH CHECK ======
+# Health check ل Render
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def index():
     return "🤖 PowerX Bot (Webhook) is running!"
 
-# ====== AIOHTTP APP ENTRY ======
-async def main():
-    runner = web.AppRunner(dp)
-    await runner.setup()
-    site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT)
-    await site.start()
-
-    flask_app.run(host=WEBAPP_HOST, port=WEBAPP_PORT)
-
+# نقطة التشغيل
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(start_webhook(
+    start_webhook(
         dispatcher=dp,
         webhook_path=WEBHOOK_PATH,
         on_startup=on_startup,
@@ -172,6 +167,4 @@ if __name__ == "__main__":
         skip_updates=True,
         host=WEBAPP_HOST,
         port=WEBAPP_PORT,
-    ))
-
-    flask_app.run(host=WEBAPP_HOST, port=WEBAPP_PORT)
+    )

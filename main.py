@@ -144,4 +144,4 @@ if __name__ == "__main__":
     # تشغيل Flask في Thread منفصل
     threading.Thread(target=run_flask).start()
     # تشغيل البوت
-    executor.start_polling(dp, skip_updates=True)
+    # executor.start_polling(dp, skip_updates=True)

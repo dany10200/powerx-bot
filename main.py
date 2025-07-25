@@ -1,13 +1,16 @@
 import os
 import openai
 import smtplib
-import threading
-from aiogram import Bot, Dispatcher, types, executor
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import Update
+from aiogram.utils.executor import start_webhook
 from dotenv import load_dotenv
 from email.message import EmailMessage
 from collections import defaultdict
 from datetime import datetime
 from flask import Flask
+from aiohttp import web
+import asyncio
 
 # تحميل متغيرات البيئة
 load_dotenv()
@@ -17,12 +20,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_FROM")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
 LOCATION = os.getenv("LOCATION")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثال: https://your-app.onrender.com/webhook
 
-assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود في .env"
+assert BOT_TOKEN, "❌ BOT_TOKEN غير موجود"
 assert OPENAI_API_KEY, "❌ OPENAI_API_KEY غير موجود"
 assert EMAIL_ADDRESS and EMAIL_PASSWORD, "❌ إعدادات الإيميل ناقصة"
+assert WEBHOOK_URL, "❌ WEBHOOK_URL ناقص، أضفه في .env"
 
-# aiogram
+# إعدادات aiogram
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 openai.api_key = OPENAI_API_KEY
@@ -54,17 +59,6 @@ SYSTEM_PROMPT = f"""
 - باقة VIP – 7000 ريال: تغليف كامل + تظليل + نانو داخلي.
 الأسعار تختلف حسب حجم السيارة. الأرضيات تُسعر من المشرف.
 """
-
-# ====== FLASK KEEP-ALIVE SERVER FOR RENDER ======
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "🤖 PowerX Bot is running!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
 
 # ====== EMAIL FUNCTION ======
 def send_email(user_id, messages):
@@ -139,9 +133,45 @@ async def handle_message(message: types.Message):
         print(f"[ERROR] {e}")
         await message.reply(f"⚠️ صار خطأ: {str(e)}")
 
-# ====== MAIN ENTRY POINT ======
+# ====== WEBHOOK CONFIGURATION ======
+WEBHOOK_PATH = "/webhook"
+WEBAPP_HOST = "0.0.0.0"
+WEBAPP_PORT = int(os.getenv("PORT", 10000))
+
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
+    print(f"✅ Webhook تم تفعيله على {WEBHOOK_URL + WEBHOOK_PATH}")
+
+async def on_shutdown(app):
+    print("🔻 إيقاف البوت...")
+    await bot.delete_webhook()
+
+# ====== FLASK ROUTE FOR RENDER HEALTH CHECK ======
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def index():
+    return "🤖 PowerX Bot (Webhook) is running!"
+
+# ====== AIOHTTP APP ENTRY ======
+async def main():
+    runner = web.AppRunner(dp)
+    await runner.setup()
+    site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT)
+    await site.start()
+
+    flask_app.run(host=WEBAPP_HOST, port=WEBAPP_PORT)
+
 if __name__ == "__main__":
-    # تشغيل Flask في Thread منفصل
-    threading.Thread(target=run_flask).start()
-    # تشغيل البوت
-    # executor.start_polling(dp, skip_updates=True)
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host=WEBAPP_HOST,
+        port=WEBAPP_PORT,
+    ))
+
+    flask_app.run(host=WEBAPP_HOST, port=WEBAPP_PORT)
